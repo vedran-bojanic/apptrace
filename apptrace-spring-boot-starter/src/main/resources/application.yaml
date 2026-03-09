@@ -1,0 +1,3 @@
+spring:
+  application:
+    name: apptrace-spring-boot-starter

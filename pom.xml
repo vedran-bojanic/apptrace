@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ================================================================== -->
+    <!-- Parent: Spring Boot 4 BOM                                          -->
+    <!-- ================================================================== -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.3</version>
+        <relativePath/>
+    </parent>
+
+    <!-- ================================================================== -->
+    <!-- Coordinates                                                         -->
+    <!-- ================================================================== -->
+    <groupId>io.apptrace</groupId>
+    <artifactId>apptrace-parent</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>Apptrace :: Parent</name>
+    <description>Open-source append-only audit log microservice</description>
+
+    <!-- ================================================================== -->
+    <!-- Modules                                                             -->
+    <!-- ================================================================== -->
+    <modules>
+        <module>apptrace-server</module>
+        <module>apptrace-spring-boot-starter</module>
+    </modules>
+
+    <!-- ================================================================== -->
+    <!-- Properties                                                          -->
+    <!-- ================================================================== -->
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Dependency versions not managed by Spring Boot BOM -->
+        <hypersistence-utils.version>3.15.2</hypersistence-utils.version>
+        <testcontainers.version>2.0.3</testcontainers.version>
+    </properties>
+
+    <!-- ================================================================== -->
+    <!-- Dependency Management (shared across all modules)                  -->
+    <!-- ================================================================== -->
+    <dependencyManagement>
+        <dependencies>
+            <!-- TEST -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>io.apptrace</groupId>
+                <artifactId>apptrace-spring-boot-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- DB -->
+            <dependency>
+                <groupId>io.hypersistence</groupId>
+                <artifactId>hypersistence-utils-hibernate-73</artifactId>
+                <version>${hypersistence-utils.version}</version>
+            </dependency>
+
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- ================================================================== -->
+    <!-- Build                                                               -->
+    <!-- ================================================================== -->
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <release>${java.version}</release>
+                        <compilerArgs>
+                            <arg>-parameters</arg>
+                        </compilerArgs>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration>
+                        <!-- Allow Testcontainers to work under Java 21 -->
+                        <argLine>
+                            --add-opens java.base/java.lang=ALL-UNNAMED
+                        </argLine>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+</project>

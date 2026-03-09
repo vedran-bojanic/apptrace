@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:16:///apptrace   # tc: prefix = Testcontainers manages this
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+# Disable security for context load test (no API keys configured)
+spring.autoconfigure.exclude:
+  - org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration
