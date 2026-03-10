@@ -43,6 +43,7 @@
         <!-- Dependency versions not managed by Spring Boot BOM -->
         <hypersistence-utils.version>3.15.2</hypersistence-utils.version>
         <testcontainers.version>2.0.3</testcontainers.version>
+        <retry.version>2.0.12</retry.version>
     </properties>
 
     <!-- ================================================================== -->
