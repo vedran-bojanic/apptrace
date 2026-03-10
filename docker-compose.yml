@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: apptrace-postgres
+    environment:
+      POSTGRES_DB: apptrace
+      POSTGRES_USER: apptrace
+      POSTGRES_PASSWORD: apptrace
+    ports:
+      - "5432:5432"
+    volumes:
+      - apptrace-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apptrace -d apptrace"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  apptrace-data:
