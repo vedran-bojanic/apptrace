@@ -6,6 +6,7 @@ import io.apptrace.server.domain.model.TenantEntity;
 import io.apptrace.server.exception.InvalidApiKeyException;
 import io.apptrace.server.exception.ResourceNotFoundException;
 import io.apptrace.server.repository.ApiKeyRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,7 @@ import java.util.UUID;
 
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class ApiKeyService {
 
     private static final String KEY_PREFIX_LITERAL = "at_";
@@ -30,11 +32,6 @@ public class ApiKeyService {
     private final ApiKeyRepository apiKeyRepository;
     private final TenantService tenantService;
     private final SecureRandom secureRandom = new SecureRandom();
-
-    public ApiKeyService(ApiKeyRepository apiKeyRepository, TenantService tenantService) {
-        this.apiKeyRepository = apiKeyRepository;
-        this.tenantService    = tenantService;
-    }
 
     /**
      * Creates a new API key for a tenant.
@@ -131,3 +128,4 @@ public class ApiKeyService {
      */
     public record CreatedApiKey(ApiKeyEntity apiKey, String rawKey) {}
 }
+

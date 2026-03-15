@@ -5,6 +5,7 @@ import io.apptrace.server.domain.model.AuditEventEntity;
 import io.apptrace.server.domain.model.Cursor;
 import io.apptrace.server.domain.model.HashChainEntity;
 import io.apptrace.server.domain.model.Page;
+import io.apptrace.server.dto.request.IngestRequest;
 import io.apptrace.server.exception.ChainIntegrityException;
 import io.apptrace.server.exception.ResourceNotFoundException;
 import io.apptrace.server.repository.AuditEventRepository;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -45,20 +47,13 @@ public class AuditEventService {
     // -------------------------------------------------------------------------
 
     /**
-     * Records a new audit event for a tenant.
+     * Records a single audit event for a tenant.
      *
-     * This is the hot path — called on every incoming event.
+     * Handles idempotency — if a key is provided and already exists for this
+     * tenant, returns the existing event without creating a duplicate.
      *
-     * Steps:
-     *   1. Load the chain head (with optimistic lock via @Version)
-     *   2. Assign the next sequence number
-     *   3. Compute payloadHash and chainHash
-     *   4. Save the event
-     *   5. Advance the chain head
-     *
-     * If two events arrive simultaneously for the same tenant, one will get
-     * an OptimisticLockingFailureException on step 5. @Retryable catches it
-     * and retries the whole transaction automatically (up to 3 times).
+     * @Retryable handles optimistic lock collisions when two events arrive
+     * simultaneously for the same tenant.
      */
     @Retryable(
             retryFor = OptimisticLockingFailureException.class,
@@ -66,42 +61,48 @@ public class AuditEventService {
             backoff = @Backoff(delay = 50, multiplier = 2)
     )
     @Transactional
-    public AuditEventEntity record(IngestRequest request) {
-        // 1. Load chain head
-        HashChainEntity chain = chainRepository.findById(request.tenantId())
-                .orElseThrow(() -> new ChainIntegrityException(
-                        "No hash chain found for tenant: " + request.tenantId()
-                                + " — was the tenant created properly?"));
+    public AuditEventEntity record(UUID tenantId, IngestRequest request) {
 
-        // 2. Next sequence number
+        // Idempotency check — return existing event if key already used
+        if (request.idempotencyKey() != null) {
+            Optional<AuditEventEntity> existing =
+                    eventRepository.findByTenantIdAndIdempotencyKey(
+                            tenantId, request.idempotencyKey());
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
+
+        // Load chain head
+        HashChainEntity chain = chainRepository.findById(tenantId)
+                .orElseThrow(() -> new ChainIntegrityException(
+                        "No hash chain for tenant: " + tenantId));
+
         long sequenceNum = chain.nextSequenceNum();
 
-        // 3. Compute hashes
+        // Compute hashes
+        Map<String, Object> payload = buildPayload(request);
         String payloadHash = hashService.computePayloadHash(
-                sequenceNum,
-                request.tenantId(),
-                request.actorId(),
-                request.eventType(),
-                request.payload()
-        );
+                sequenceNum, tenantId,
+                request.actor().id(), request.action(),
+                payload);
         String chainHash = hashService.computeChainHash(
-                chain.getLastChainHash(),
-                payloadHash
-        );
+                chain.getLastChainHash(), payloadHash);
 
-        // 4. Build and save the event
+        // Build and save event
         AuditEventEntity event = AuditEventEntity.builder()
-                .tenantId(request.tenantId())
+                .tenantId(tenantId)
                 .sequenceNum(sequenceNum)
-                .actorType(request.actorType())
-                .actorId(request.actorId())
-                .actorName(request.actorName())
-                .eventType(request.eventType())
-                .eventCategory(request.eventCategory())
+                .idempotencyKey(request.idempotencyKey())
+                .actorId(request.actor().id())
+                .actorType(request.actor().type())
+                .actorName(request.actor().name())
+                .eventType(request.action())
+                .eventCategory(request.category() != null ? request.category() : "GENERAL")
                 .severity(request.severity() != null ? request.severity() : EventSeverity.INFO)
-                .resourceType(request.resourceType())
-                .resourceId(request.resourceId())
-                .payload(request.payload() != null ? request.payload() : Map.of())
+                .resourceType(request.resource() != null ? request.resource().type() : null)
+                .resourceId(request.resource()  != null ? request.resource().id()   : null)
+                .payload(payload)
                 .metadata(request.metadata() != null ? request.metadata() : Map.of())
                 .payloadHash(payloadHash)
                 .chainHash(chainHash)
@@ -115,8 +116,8 @@ public class AuditEventService {
 
         AuditEventEntity saved = eventRepository.save(event);
 
-        // 5. Advance chain head — @Version here will throw OptimisticLockingFailureException
-        //    if another thread beat us to it, triggering a @Retryable retry
+        // Advance chain head — @Version will throw OptimisticLockingFailureException
+        // if another thread beat us, triggering a @Retryable retry
         chain.advance(sequenceNum, chainHash, saved.getId());
         chainRepository.save(chain);
 
@@ -128,20 +129,19 @@ public class AuditEventService {
     // -------------------------------------------------------------------------
 
     @Transactional(readOnly = true)
-    public Page<AuditEventEntity> findPage(UUID tenantId, String encodedCursor, int pageSize) {
-        pageSize = clampPageSize(pageSize);
+    public Page<AuditEventEntity> findPage(
+            UUID tenantId, String encodedCursor, int pageSize) {
+        pageSize = clamp(pageSize);
         long afterSeq = decodeCursor(encodedCursor);
-        // Fetch one extra row to detect if there's a next page
         List<AuditEventEntity> results = eventRepository.findPage(
                 tenantId, afterSeq, PageRequest.of(0, pageSize + 1));
-        return Page.from(results, pageSize,
-                e -> new Cursor(e.getSequenceNum()));
+        return Page.from(results, pageSize, e -> new Cursor(e.getSequenceNum()));
     }
 
     @Transactional(readOnly = true)
     public Page<AuditEventEntity> findPageByActor(
             UUID tenantId, String actorId, String encodedCursor, int pageSize) {
-        pageSize = clampPageSize(pageSize);
+        pageSize = clamp(pageSize);
         long afterSeq = decodeCursor(encodedCursor);
         List<AuditEventEntity> results = eventRepository.findPageByActor(
                 tenantId, actorId, afterSeq, PageRequest.of(0, pageSize + 1));
@@ -152,10 +152,11 @@ public class AuditEventService {
     public Page<AuditEventEntity> findPageByResource(
             UUID tenantId, String resourceType, String resourceId,
             String encodedCursor, int pageSize) {
-        pageSize = clampPageSize(pageSize);
+        pageSize = clamp(pageSize);
         long afterSeq = decodeCursor(encodedCursor);
         List<AuditEventEntity> results = eventRepository.findPageByResource(
-                tenantId, resourceType, resourceId, afterSeq, PageRequest.of(0, pageSize + 1));
+                tenantId, resourceType, resourceId, afterSeq,
+                PageRequest.of(0, pageSize + 1));
         return Page.from(results, pageSize, e -> new Cursor(e.getSequenceNum()));
     }
 
@@ -163,7 +164,7 @@ public class AuditEventService {
     public Page<AuditEventEntity> findPageByTimeRange(
             UUID tenantId, OffsetDateTime from, OffsetDateTime to,
             String encodedCursor, int pageSize) {
-        pageSize = clampPageSize(pageSize);
+        pageSize = clamp(pageSize);
         long afterSeq = decodeCursor(encodedCursor);
         List<AuditEventEntity> results = eventRepository.findPageByTimeRange(
                 tenantId, from, to, afterSeq, PageRequest.of(0, pageSize + 1));
@@ -173,53 +174,46 @@ public class AuditEventService {
     @Transactional(readOnly = true)
     public AuditEventEntity findById(UUID tenantId, UUID eventId) {
         AuditEventEntity event = eventRepository.findById(eventId)
-                .orElseThrow(() -> new ResourceNotFoundException("Event not found: " + eventId));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Event not found: " + eventId));
+        // Don't leak that the event exists for another tenant
         if (!event.getTenantId().equals(tenantId)) {
-            // Don't leak that the event exists for another tenant
             throw new ResourceNotFoundException("Event not found: " + eventId);
         }
         return event;
     }
 
     // -------------------------------------------------------------------------
-    // Internal helpers
+    // Helpers
     // -------------------------------------------------------------------------
 
-    private long decodeCursor(String encodedCursor) {
-        if (encodedCursor == null || encodedCursor.isBlank()) {
-            return Cursor.BEGINNING.sequenceNum();
+    /**
+     * Builds the canonical payload map from the request.
+     * The actor IP (enriched from HTTP request in the controller) is included here.
+     */
+    private Map<String, Object> buildPayload(IngestRequest request) {
+        var actor = request.actor();
+        var payload = new java.util.LinkedHashMap<String, Object>();
+        payload.put("actorId",   actor.id());
+        payload.put("actorType", actor.type());
+        if (actor.ip() != null) payload.put("actorIp", actor.ip());
+        payload.put("action",    request.action());
+        if (request.resource() != null) {
+            payload.put("resourceType", request.resource().type());
+            payload.put("resourceId",   request.resource().id());
         }
+        return payload;
+    }
+
+    private long decodeCursor(String encodedCursor) {
+        if (encodedCursor == null || encodedCursor.isBlank())
+            return Cursor.BEGINNING.sequenceNum();
         return Cursor.decode(encodedCursor).sequenceNum();
     }
 
-    private int clampPageSize(int requested) {
+    private int clamp(int requested) {
         if (requested <= 0)            return 50;
         if (requested > MAX_PAGE_SIZE) return MAX_PAGE_SIZE;
         return requested;
     }
-
-    // -------------------------------------------------------------------------
-    // Ingest request — passed by the controller into record()
-    // -------------------------------------------------------------------------
-
-    public record IngestRequest(
-            UUID tenantId,
-            String actorType,
-            String actorId,
-            String actorName,
-            String eventType,
-            String eventCategory,
-            EventSeverity severity,
-            String resourceType,
-            String resourceId,
-            Map<String, Object> payload,
-            Map<String, Object> metadata,
-            OffsetDateTime occurredAt,
-            String serviceName,
-            String serviceVersion,
-            String environment,
-            String traceId,
-            String requestId
-    ) {}
 }
-

@@ -9,19 +9,15 @@ import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public interface AuditEventRepository extends JpaRepository<AuditEventEntity, UUID> {
 
-    /**
-     * Core cursor-based pagination query.
-     * <p/>
-     * Fetches pageSize+1 rows — if we get pageSize+1 back, there is a next page.
-     * The caller trims the extra row and uses the last item's sequenceNum as the next cursor.
-     * <p/>
-     * Example: cursor=1050, pageSize=50 → fetch rows 1051-1101, return 1051-1100 + cursor pointing to 1100
-     */
+    Optional<AuditEventEntity> findByTenantIdAndIdempotencyKey(
+            UUID tenantId, String idempotencyKey);
+
     @Query("""
         SELECT e FROM AuditEventEntity e
         WHERE e.tenantId = :tenantId
@@ -31,13 +27,8 @@ public interface AuditEventRepository extends JpaRepository<AuditEventEntity, UU
     List<AuditEventEntity> findPage(
             @Param("tenantId") UUID tenantId,
             @Param("afterSequenceNum") long afterSequenceNum,
-            Pageable pageable
-    );
+            Pageable pageable);
 
-    /**
-     * Same as findPage but filtered by actor.
-     * e.g. "show me everything user-123 ever did"
-     */
     @Query("""
         SELECT e FROM AuditEventEntity e
         WHERE e.tenantId = :tenantId
@@ -49,13 +40,8 @@ public interface AuditEventRepository extends JpaRepository<AuditEventEntity, UU
             @Param("tenantId") UUID tenantId,
             @Param("actorId") String actorId,
             @Param("afterSequenceNum") long afterSequenceNum,
-            Pageable pageable
-    );
+            Pageable pageable);
 
-    /**
-     * Filtered by resource.
-     * e.g. "show me everything that happened to ride-456"
-     */
     @Query("""
         SELECT e FROM AuditEventEntity e
         WHERE e.tenantId = :tenantId
@@ -69,31 +55,8 @@ public interface AuditEventRepository extends JpaRepository<AuditEventEntity, UU
             @Param("resourceType") String resourceType,
             @Param("resourceId") String resourceId,
             @Param("afterSequenceNum") long afterSequenceNum,
-            Pageable pageable
-    );
+            Pageable pageable);
 
-    /**
-     * Filtered by event type.
-     * e.g. "show me all ride.cancelled events"
-     */
-    @Query("""
-        SELECT e FROM AuditEventEntity e
-        WHERE e.tenantId = :tenantId
-          AND e.eventType = :eventType
-          AND e.sequenceNum > :afterSequenceNum
-        ORDER BY e.sequenceNum ASC
-    """)
-    List<AuditEventEntity> findPageByEventType(
-            @Param("tenantId") UUID tenantId,
-            @Param("eventType") String eventType,
-            @Param("afterSequenceNum") long afterSequenceNum,
-            Pageable pageable
-    );
-
-    /**
-     * Time-range query — useful for the dashboard's date filter.
-     * e.g. "show me everything that happened yesterday"
-     */
     @Query("""
         SELECT e FROM AuditEventEntity e
         WHERE e.tenantId = :tenantId
@@ -107,7 +70,5 @@ public interface AuditEventRepository extends JpaRepository<AuditEventEntity, UU
             @Param("from") OffsetDateTime from,
             @Param("to") OffsetDateTime to,
             @Param("afterSequenceNum") long afterSequenceNum,
-            Pageable pageable
-    );
+            Pageable pageable);
 }
-
