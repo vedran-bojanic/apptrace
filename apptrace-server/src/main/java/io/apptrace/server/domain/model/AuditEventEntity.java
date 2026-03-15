@@ -3,6 +3,7 @@ package io.apptrace.server.domain.model;
 import io.apptrace.server.domain.enums.EventSeverity;
 import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
 import jakarta.persistence.*;
+import lombok.Getter;
 import org.hibernate.annotations.Immutable;
 import org.hibernate.annotations.Type;
 
@@ -23,6 +24,7 @@ import java.util.UUID;
  *   chainHash   = SHA-256(prevChainHash | payloadHash)
  */
 @Entity
+@Getter
 @Immutable
 @Table(name = "audit_events")
 public class AuditEventEntity {
@@ -37,6 +39,9 @@ public class AuditEventEntity {
 
     @Column(name = "sequence_num", nullable = false, updatable = false)
     private long sequenceNum;
+
+    @Column(name = "idempotency_key", updatable = false)
+    private String idempotencyKey;
 
     // -- Actor --
     @Column(name = "actor_type", nullable = false, updatable = false, length = 64)
@@ -110,6 +115,7 @@ public class AuditEventEntity {
     private AuditEventEntity(Builder b) {
         this.tenantId       = b.tenantId;
         this.sequenceNum    = b.sequenceNum;
+        this.idempotencyKey = b.idempotencyKey;
         this.actorType      = b.actorType;
         this.actorId        = b.actorId;
         this.actorName      = b.actorName;
@@ -131,33 +137,6 @@ public class AuditEventEntity {
     }
 
     // -------------------------------------------------------------------------
-    // Accessors — all read-only, no setters
-    // -------------------------------------------------------------------------
-
-    public UUID getId()                      { return id; }
-    public UUID getTenantId()                { return tenantId; }
-    public long getSequenceNum()             { return sequenceNum; }
-    public String getActorType()             { return actorType; }
-    public String getActorId()               { return actorId; }
-    public String getActorName()             { return actorName; }
-    public String getEventType()             { return eventType; }
-    public String getEventCategory()         { return eventCategory; }
-    public EventSeverity getSeverity()       { return severity; }
-    public String getResourceType()          { return resourceType; }
-    public String getResourceId()            { return resourceId; }
-    public Map<String, Object> getPayload()  { return payload; }
-    public Map<String, Object> getMetadata() { return metadata; }
-    public String getPayloadHash()           { return payloadHash; }
-    public String getChainHash()             { return chainHash; }
-    public OffsetDateTime getOccurredAt()    { return occurredAt; }
-    public OffsetDateTime getReceivedAt()    { return receivedAt; }
-    public String getServiceName()           { return serviceName; }
-    public String getServiceVersion()        { return serviceVersion; }
-    public String getEnvironment()           { return environment; }
-    public String getTraceId()               { return traceId; }
-    public String getRequestId()             { return requestId; }
-
-    // -------------------------------------------------------------------------
     // Builder
     // -------------------------------------------------------------------------
 
@@ -166,6 +145,7 @@ public class AuditEventEntity {
     public static final class Builder {
         private UUID tenantId;
         private long sequenceNum;
+        private String idempotencyKey;
         private String actorType, actorId, actorName;
         private String eventType, eventCategory;
         private EventSeverity severity;
@@ -177,6 +157,7 @@ public class AuditEventEntity {
 
         public Builder tenantId(UUID v)                 { this.tenantId       = v; return this; }
         public Builder sequenceNum(long v)              { this.sequenceNum    = v; return this; }
+        public Builder idempotencyKey(String v)         { this.idempotencyKey    = v; return this; }
         public Builder actorType(String v)              { this.actorType      = v; return this; }
         public Builder actorId(String v)                { this.actorId        = v; return this; }
         public Builder actorName(String v)              { this.actorName      = v; return this; }

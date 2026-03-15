@@ -4,20 +4,18 @@ import io.apptrace.server.domain.model.TenantEntity;
 import io.apptrace.server.exception.ResourceNotFoundException;
 import io.apptrace.server.exception.TenantAlreadyExistsException;
 import io.apptrace.server.repository.TenantRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
 @Service
+@RequiredArgsConstructor
 @Transactional
 public class TenantService {
 
     private final TenantRepository tenantRepository;
-
-    public TenantService(TenantRepository tenantRepository) {
-        this.tenantRepository = tenantRepository;
-    }
 
     public TenantEntity create(String externalId, String displayName) {
         if (tenantRepository.existsByExternalId(externalId)) {
