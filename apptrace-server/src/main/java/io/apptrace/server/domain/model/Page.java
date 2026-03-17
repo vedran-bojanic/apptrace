@@ -2,6 +2,7 @@ package io.apptrace.server.domain.model;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 
 /**
  * A single page from a cursor-based paginated query.
@@ -22,6 +23,15 @@ public record Page<T>(
     public boolean hasNextPage()  { return nextCursor.isPresent(); }
     public boolean isEmpty()      { return items.isEmpty(); }
     public int size()             { return items.size(); }
+
+    /** Maps items to a different type while keeping cursor and pageSize intact. */
+    public <R> Page<R> map(Function<T, R> mapper) {
+        return new Page<>(
+                items.stream().map(mapper).toList(),
+                nextCursor,
+                pageSize
+        );
+    }
 
     /**
      * Builds a page from a raw result list.
