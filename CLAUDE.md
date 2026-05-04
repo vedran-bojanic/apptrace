@@ -83,3 +83,35 @@ apptrace:
   server-url: https://apptrace.example.com
   api-key: at_live_...
 ```
+
+## Frontend
+
+The dashboard frontend lives in a **separate sibling repository**: `../apptrace-frontend/`
+
+```
+~/Projects/
+  apptrace/            ← this repo (backend)
+  apptrace-frontend/   ← Angular dashboard (separate git repo)
+```
+
+Stack: Angular (TypeScript), Angular Material or PrimeNG for UI components.
+
+The frontend is a pure SPA that talks to this REST API. It is not served by the Spring Boot server — run them independently during development.
+
+### API base URL
+- Local dev: `http://localhost:8080`
+- All requests require `Authorization: Bearer <api-key>` header
+
+### REST API summary (for frontend reference)
+| Method | Path | Scope | Description |
+|---|---|---|---|
+| POST | `/api/v1/tenants` | none | Create tenant |
+| GET | `/api/v1/tenants` | none | List tenants |
+| POST | `/api/v1/api-keys` | none | Create API key |
+| GET | `/api/v1/api-keys` | none | List API keys |
+| POST | `/api/v1/events` | WRITE | Ingest single event |
+| POST | `/api/v1/events/batch` | WRITE | Ingest batch of events |
+| GET | `/api/v1/events` | READ | Query events (cursor paginated) |
+
+### Pagination
+Events endpoint returns a `nextCursor` field. Pass it as `?cursor=<value>` on the next request. Fetch `pageSize + 1` rows to detect if a next page exists.
